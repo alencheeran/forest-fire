@@ -671,7 +671,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 TileLayer(
                   wmsOptions: WMSTileLayerOptions(
                     baseUrl: 'https://firms.modaps.eosdis.nasa.gov/mapserver/wms/fires/latest/$_nasaMapKey/?',
-                    layers: const ['fires_viirs_snpp_24'], // 24-hour fire detections
+                    layers: const ['fires_viirs_7'], // 7-day fire detections across all VIIRS satellites
                     format: 'image/png',
                     transparent: true,
                   ),
