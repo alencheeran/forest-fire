@@ -26,7 +26,7 @@ def main():
     df = pd.read_csv(data_path)
 
     # We will use temp, RH, wind, and rain as features as recommended
-    features = ['temp', 'RH', 'wind', 'rain']
+    features = ['temp', 'RH', 'wind', 'rain', 'elevation']
     X = df[features]
     
     # Target 1: Fire Occurs or Not

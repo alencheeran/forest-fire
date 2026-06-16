@@ -23,17 +23,19 @@ def predict():
         data = request.get_json()
         
         # Extract features
-        temp = data.get('temp', 0.0)
-        rh = data.get('RH', 0.0)
-        wind = data.get('wind', 0.0)
-        rain = data.get('rain', 0.0)
+        temp = float(data.get('temp', 0))
+        rh = float(data.get('RH', 0))
+        wind = float(data.get('wind', 0))
+        rain = float(data.get('rain', 0))
+        elevation = float(data.get('elevation', 0))
         
         # Create a DataFrame to match the training feature names
         features = pd.DataFrame([{
             'temp': temp,
             'RH': rh,
             'wind': wind,
-            'rain': rain
+            'rain': rain,
+            'elevation': elevation
         }])
         
         response = {}
