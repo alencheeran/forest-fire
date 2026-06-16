@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 void main() {
   runApp(const ForestFireApp());
@@ -41,7 +42,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMixin {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   LatLng? selectedLocation;
   String? selectedLocationName;
   double? fireRadiusMeters;
@@ -60,15 +61,44 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
   List<FlSpot> tempHistorySpots = [];
   List<FlSpot> rhHistorySpots = [];
 
-  // Phase 12 & 13 Variables
   bool _showNasaHeatmap = false;
   double _currentElevation = 0.0;
-  final String _nasaMapKey = '561c93934c9267b53e6443cf8f06ffcd';
+  final String _nasaMapKey = '561c93934c9267b53e6443cf8f06ffcd'; 
+
+  late AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
     _loadSavedLocations();
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    final latTween = Tween<double>(begin: mapController.camera.center.latitude, end: destLocation.latitude);
+    final lngTween = Tween<double>(begin: mapController.camera.center.longitude, end: destLocation.longitude);
+    final zoomTween = Tween<double>(begin: mapController.camera.zoom, end: destZoom);
+
+    final controller = AnimationController(duration: const Duration(milliseconds: 1500), vsync: this);
+    final Animation<double> animation = CurvedAnimation(parent: controller, curve: Curves.fastOutSlowIn);
+
+    controller.addListener(() {
+      mapController.move(LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)), zoomTween.evaluate(animation));
+    });
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed || status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
   }
 
   Future<void> _loadSavedLocations() async {
@@ -97,6 +127,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Saved $name to Favorites!'),
         backgroundColor: Colors.green,
+        behavior: SnackBarBehavior.floating,
       ));
     }
   }
@@ -115,6 +146,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       selectedLocationName = "Custom Pin";
     });
     _fetchRealTimeWeather(point);
+    _animatedMapMove(point, 12.0);
   }
 
   Future<void> _fetchRealTimeWeather(LatLng point) async {
@@ -134,7 +166,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         final data = jsonDecode(response.body);
         final current = data['current'];
 
-        // Extract elevation for Phase 13
         _currentElevation = (data['elevation'] ?? 0.0).toDouble();
 
         final temp = current['temperature_2m'] ?? 0.0;
@@ -147,7 +178,6 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         _windController.text = wind.toString();
         _rainController.text = rain.toString();
 
-        // Parse historical data
         tempHistorySpots.clear();
         rhHistorySpots.clear();
         
@@ -157,7 +187,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           final List<dynamic> hums = hourly['relative_humidity_2m'];
           
           for (int i = 0; i < 7; i++) {
-            int index = i * 24 + 12; // 12 PM noon
+            int index = i * 24 + 12; 
             if (index < temps.length && temps[index] != null && hums[index] != null) {
               tempHistorySpots.add(FlSpot(i.toDouble(), (temps[index] as num).toDouble()));
               rhHistorySpots.add(FlSpot(i.toDouble(), (hums[index] as num).toDouble()));
@@ -178,15 +208,14 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
 
   void _zoomIn() {
     final currentZoom = mapController.camera.zoom;
-    mapController.move(mapController.camera.center, currentZoom + 1);
+    _animatedMapMove(mapController.camera.center, currentZoom + 1);
   }
 
   void _zoomOut() {
     final currentZoom = mapController.camera.zoom;
-    mapController.move(mapController.camera.center, currentZoom - 1);
+    _animatedMapMove(mapController.camera.center, currentZoom - 1);
   }
 
-  // --- Search Autocomplete Logic --- //
   Future<Iterable<Map<String, dynamic>>> _getSuggestions(String query) async {
     if (query.isEmpty || query.length < 3) return const Iterable<Map<String, dynamic>>.empty();
 
@@ -227,11 +256,9 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       fireRadiusMeters = null;
     });
     
-    mapController.move(newLocation, 12.0);
+    _animatedMapMove(newLocation, 12.0);
     _fetchRealTimeWeather(newLocation);
   }
-
-  // --------------------------------- //
 
   void _showGlassLoadingDialog(String message) {
     showDialog(
@@ -242,9 +269,9 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(30),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
@@ -259,7 +286,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 ],
               ),
             ),
-          ),
+          ).animate().fadeIn().scale(),
         ),
       ),
     );
@@ -292,21 +319,22 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
       backgroundColor: Colors.transparent,
       builder: (context) {
         return ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               height: MediaQuery.of(context).size.height * 0.85,
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
                 left: 24,
                 right: 24,
-                top: 30,
+                top: 20,
               ),
               decoration: BoxDecoration(
                 color: const Color(0xFF1A1A24).withOpacity(0.85),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-                border: Border.all(color: Colors.white.withOpacity(0.15)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, spreadRadius: 5)],
               ),
               child: DefaultTabController(
                 length: 2,
@@ -315,31 +343,35 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   children: [
                     Center(
                       child: Container(
-                        width: 50,
-                        height: 5,
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.3), borderRadius: BorderRadius.circular(10)),
+                        width: 60,
+                        height: 6,
+                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.4), borderRadius: BorderRadius.circular(10)),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Expanded(
                           child: Text(
                             selectedLocationName ?? 'Custom Location',
-                            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                            style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
                             overflow: TextOverflow.ellipsis,
-                          ),
+                          ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.1),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.star_border, color: Colors.amber, size: 30),
+                          icon: const Icon(Icons.star_border, color: Colors.amber, size: 32),
                           onPressed: _saveCurrentLocation,
                           tooltip: "Save to Favorites",
-                        ),
+                        ).animate().scale(delay: 300.ms, duration: 400.ms),
                       ],
                     ),
+                    const SizedBox(height: 10),
                     const TabBar(
                       indicatorColor: Color(0xFFFF5722),
+                      indicatorWeight: 3,
+                      labelStyle: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      unselectedLabelStyle: TextStyle(fontSize: 16),
                       tabs: [
                         Tab(text: "Live Data"),
                         Tab(text: "7-Day Trends"),
@@ -349,52 +381,49 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                     Expanded(
                       child: TabBarView(
                         children: [
-                          // TAB 1: Live Data & Form
                           SingleChildScrollView(
                             child: Column(
                               children: [
                                 const SizedBox(height: 10),
-                                _buildPremiumTextField('Temperature (°C)', Icons.thermostat, _tempController),
-                                _buildPremiumTextField('Relative Humidity (%)', Icons.water_drop, _rhController),
-                                _buildPremiumTextField('Wind Speed (km/h)', Icons.air, _windController),
-                                _buildPremiumTextField('Rain (mm)', Icons.umbrella, _rainController),
+                                _buildPremiumTextField('Temperature (°C)', Icons.thermostat, _tempController).animate().fade(delay: 100.ms).slideY(),
+                                _buildPremiumTextField('Relative Humidity (%)', Icons.water_drop, _rhController).animate().fade(delay: 200.ms).slideY(),
+                                _buildPremiumTextField('Wind Speed (km/h)', Icons.air, _windController).animate().fade(delay: 300.ms).slideY(),
+                                _buildPremiumTextField('Rain (mm)', Icons.umbrella, _rainController).animate().fade(delay: 400.ms).slideY(),
                                 
-                                // Display elevation
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text("Elevation: ${_currentElevation.toStringAsFixed(1)}m", style: TextStyle(color: Colors.white70, fontSize: 14)),
-                                ),
-                                const SizedBox(height: 15),
+                                ).animate().fade(delay: 500.ms),
+                                const SizedBox(height: 20),
 
                                 Container(
                                   width: double.infinity,
-                                  height: 55,
+                                  height: 60,
                                   decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(15),
+                                    borderRadius: BorderRadius.circular(20),
                                     gradient: const LinearGradient(
                                       colors: [Color(0xFFFF5722), Color(0xFFD84315)],
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                     ),
-                                    boxShadow: [BoxShadow(color: const Color(0xFFFF5722).withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 5))],
+                                    boxShadow: [BoxShadow(color: const Color(0xFFFF5722).withOpacity(0.5), blurRadius: 20, offset: const Offset(0, 5))],
                                   ),
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.transparent,
                                       shadowColor: Colors.transparent,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                     ),
                                     onPressed: () {
                                       Navigator.pop(context);
                                       _fetchPrediction();
                                     },
-                                    child: const Text('Analyze Risk Level', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                                    child: const Text('Analyze Risk Level', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
                                   ),
-                                ),
+                                ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(duration: 2.seconds, color: Colors.white30),
                               ],
                             ),
                           ),
-                          // TAB 2: Historical Chart
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 20),
                             child: tempHistorySpots.isEmpty ? const Center(child: Text("No historical data available.")) : Column(
@@ -402,20 +431,20 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                               children: [
                                 Row(
                                   children: [
-                                    Container(width: 15, height: 15, color: Colors.orangeAccent),
-                                    const SizedBox(width: 5),
-                                    const Text("Temp (°C)", style: TextStyle(color: Colors.white)),
-                                    const SizedBox(width: 20),
-                                    Container(width: 15, height: 15, color: Colors.lightBlueAccent),
-                                    const SizedBox(width: 5),
-                                    const Text("Humidity (%)", style: TextStyle(color: Colors.white)),
+                                    Container(width: 15, height: 15, decoration: BoxDecoration(color: Colors.orangeAccent, borderRadius: BorderRadius.circular(4))),
+                                    const SizedBox(width: 8),
+                                    const Text("Temp (°C)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 24),
+                                    Container(width: 15, height: 15, decoration: BoxDecoration(color: Colors.lightBlueAccent, borderRadius: BorderRadius.circular(4))),
+                                    const SizedBox(width: 8),
+                                    const Text("Humidity (%)", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                   ],
-                                ),
-                                const SizedBox(height: 20),
+                                ).animate().fade(),
+                                const SizedBox(height: 30),
                                 Expanded(
                                   child: LineChart(
                                     LineChartData(
-                                      gridData: const FlGridData(show: true, drawVerticalLine: false),
+                                      gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => FlLine(color: Colors.white10, strokeWidth: 1)),
                                       titlesData: const FlTitlesData(show: false),
                                       borderData: FlBorderData(show: false),
                                       lineBarsData: [
@@ -423,23 +452,23 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                                           spots: tempHistorySpots,
                                           isCurved: true,
                                           color: Colors.orangeAccent,
-                                          barWidth: 4,
+                                          barWidth: 5,
                                           isStrokeCapRound: true,
                                           dotData: const FlDotData(show: false),
-                                          belowBarData: BarAreaData(show: true, color: Colors.orangeAccent.withOpacity(0.1)),
+                                          belowBarData: BarAreaData(show: true, color: Colors.orangeAccent.withOpacity(0.15)),
                                         ),
                                         LineChartBarData(
                                           spots: rhHistorySpots,
                                           isCurved: true,
                                           color: Colors.lightBlueAccent,
-                                          barWidth: 4,
+                                          barWidth: 5,
                                           isStrokeCapRound: true,
                                           dotData: const FlDotData(show: false),
-                                          belowBarData: BarAreaData(show: true, color: Colors.lightBlueAccent.withOpacity(0.1)),
+                                          belowBarData: BarAreaData(show: true, color: Colors.lightBlueAccent.withOpacity(0.15)),
                                         ),
                                       ],
                                     ),
-                                  ),
+                                  ).animate().fadeIn(duration: 800.ms).scaleXY(begin: 0.9, end: 1.0, curve: Curves.easeOutBack),
                                 ),
                               ],
                             ),
@@ -452,7 +481,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
               ),
             ),
           ),
-        );
+        ).animate().slideY(begin: 1.0, end: 0.0, curve: Curves.easeOutExpo, duration: 600.ms);
       },
     );
   }
@@ -474,7 +503,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
           'RH': rh, 
           'wind': wind, 
           'rain': rain,
-          'elevation': _currentElevation, // Pass elevation to Phase 13 backend
+          'elevation': _currentElevation,
         })
       );
       Navigator.pop(context);
@@ -493,10 +522,10 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
 
   void _showGlassResultDialog(Map<String, dynamic> data) {
     final String risk = data['risk_level'];
-    Color riskColor = Colors.green;
+    Color riskColor = Colors.greenAccent;
     IconData riskIcon = Icons.check_circle;
     
-    if (risk == 'Medium') { riskColor = Colors.orange; riskIcon = Icons.warning; } 
+    if (risk == 'Medium') { riskColor = Colors.orangeAccent; riskIcon = Icons.warning; } 
     else if (risk == 'High') { riskColor = Colors.redAccent; riskIcon = Icons.local_fire_department; }
 
     double expectedAreaHectares = 0.0;
@@ -505,48 +534,54 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
 
     showDialog(
       context: context,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.black87,
       builder: (context) {
         return Center(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(30),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
               child: Container(
-                width: 320,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(color: const Color(0xFF1E1E28).withOpacity(0.9), borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                width: 340,
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E28).withOpacity(0.85), 
+                  borderRadius: BorderRadius.circular(30), 
+                  border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.5),
+                  boxShadow: [BoxShadow(color: riskColor.withOpacity(0.2), blurRadius: 40, spreadRadius: 10)]
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(riskIcon, color: riskColor, size: 60),
-                    const SizedBox(height: 16),
-                    Text('${data['fire_probability']} Risk', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white)),
-                    const SizedBox(height: 24),
-                    _buildResultRow('Risk Level', data['risk_level'], riskColor),
-                    const SizedBox(height: 12),
-                    _buildResultRow('Expected Area', data['expected_area'], Colors.white70),
+                    Icon(riskIcon, color: riskColor, size: 70).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(end: 1.1, duration: 1.seconds),
+                    const SizedBox(height: 20),
+                    Text('${data['fire_probability']} Risk', style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white)).animate().fadeIn().slideY(),
                     const SizedBox(height: 30),
+                    _buildResultRow('Risk Level', data['risk_level'], riskColor).animate().fadeIn(delay: 200.ms),
+                    const SizedBox(height: 16),
+                    _buildResultRow('Expected Area', data['expected_area'], Colors.white).animate().fadeIn(delay: 300.ms),
+                    const SizedBox(height: 40),
                     if (expectedAreaHectares > 0)
                       Container(
                         width: double.infinity,
-                        height: 50,
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.redAccent.withOpacity(0.2), border: Border.all(color: Colors.redAccent.withOpacity(0.5))),
+                        height: 55,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(borderRadius: BorderRadius.circular(15), color: Colors.redAccent.withOpacity(0.2), border: Border.all(color: Colors.redAccent.withOpacity(0.5))),
                         child: TextButton.icon(
                           icon: const Icon(Icons.map, color: Colors.redAccent),
-                          label: const Text('Visualize Spread', style: TextStyle(color: Colors.redAccent, fontSize: 16, fontWeight: FontWeight.bold)),
+                          label: const Text('Visualize Spread', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
                           onPressed: () {
                             Navigator.pop(context);
                             setState(() { fireRadiusMeters = radiusMeters; });
-                            if (selectedLocation != null) mapController.move(selectedLocation!, 13.0);
+                            if (selectedLocation != null) _animatedMapMove(selectedLocation!, 13.0);
                           },
                         ),
-                      ),
+                      ).animate().scale(delay: 500.ms, curve: Curves.easeOutBack),
                     SizedBox(
                       width: double.infinity,
+                      height: 50,
                       child: TextButton(
-                        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), backgroundColor: Colors.white.withOpacity(0.1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        style: TextButton.styleFrom(backgroundColor: Colors.white.withOpacity(0.1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Dismiss', style: TextStyle(color: Colors.white, fontSize: 16)),
                       ),
@@ -555,14 +590,14 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 ),
               ),
             ),
-          ),
+          ).animate().fadeIn(duration: 300.ms).scaleXY(begin: 0.8, end: 1.0, curve: Curves.easeOutBack),
         );
       },
     );
   }
 
   Widget _buildResultRow(String label, String value, Color valueColor) {
-    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16)), Text(value, style: TextStyle(color: valueColor, fontSize: 16, fontWeight: FontWeight.bold))]);
+    return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 18)), Text(value, style: TextStyle(color: valueColor, fontSize: 18, fontWeight: FontWeight.bold))]);
   }
 
   void _showGlassErrorDialog(String message) {
@@ -582,7 +617,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 48),
+                    const Icon(Icons.error_outline, color: Colors.redAccent, size: 48).animate().shake(hz: 4, duration: 500.ms),
                     const SizedBox(height: 16),
                     Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 16)),
                     const SizedBox(height: 24),
@@ -590,7 +625,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                   ],
                 ),
               ),
-            ),
+            ).animate().fadeIn().scale(),
           ),
         );
       },
@@ -611,9 +646,9 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.star, color: Colors.amber, size: 40),
+                    Icon(Icons.star, color: Colors.amber, size: 50),
                     SizedBox(height: 10),
-                    Text('Saved Locations', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('Saved Locations', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -629,13 +664,13 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                     final loc = savedLocations[index];
                     return ListTile(
                       leading: const Icon(Icons.location_on, color: Color(0xFFFF5722)),
-                      title: Text(loc['name'], style: const TextStyle(color: Colors.white, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      title: Text(loc['name'], style: const TextStyle(color: Colors.white, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis),
                       trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.white54), onPressed: () => _deleteLocation(index)),
                       onTap: () {
-                        Navigator.pop(context); // Close drawer
+                        Navigator.pop(context);
                         final pt = LatLng(loc['lat'], loc['lon']);
                         setState(() { selectedLocationName = loc['name']; fireRadiusMeters = null; });
-                        mapController.move(pt, 12.0);
+                        _animatedMapMove(pt, 12.0);
                         _fetchRealTimeWeather(pt);
                       },
                     );
@@ -664,26 +699,37 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
             mapController: mapController,
             options: MapOptions(initialCenter: const LatLng(41.8333, -6.8333), initialZoom: 10.0, onTap: _onMapTap),
             children: [
-              TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c'], userAgentPackageName: 'com.example.forest_fire_app'),
+              TileLayer(urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', subdomains: const ['a', 'b', 'c'], userAgentPackageName: 'com.example.forest_fire_app'),
               
-              // Phase 12: NASA FIRMS Live Heatmap Layer
               if (_showNasaHeatmap)
                 TileLayer(
                   wmsOptions: WMSTileLayerOptions(
                     baseUrl: 'https://firms.modaps.eosdis.nasa.gov/mapserver/wms/fires/latest/$_nasaMapKey/?',
-                    layers: const ['fires_viirs_7'], // 7-day fire detections across all VIIRS satellites
+                    layers: const ['fires_viirs_7'], 
                     format: 'image/png',
                     transparent: true,
                   ),
                 ),
 
-              if (selectedLocation != null && fireRadiusMeters != null) CircleLayer(circles: [CircleMarker(point: selectedLocation!, color: Colors.redAccent.withOpacity(0.3), borderColor: Colors.redAccent, borderStrokeWidth: 2, useRadiusInMeter: true, radius: fireRadiusMeters!)]),
-              if (selectedLocation != null) MarkerLayer(markers: [Marker(point: selectedLocation!, width: 60, height: 60, child: const Icon(Icons.location_on, color: Color(0xFFFF5722), size: 50, shadows: [Shadow(color: Colors.black54, blurRadius: 10, offset: Offset(0, 5))]))]),
+              if (selectedLocation != null && fireRadiusMeters != null) 
+                CircleLayer(circles: [CircleMarker(point: selectedLocation!, color: Colors.redAccent.withOpacity(0.3), borderColor: Colors.redAccent, borderStrokeWidth: 2, useRadiusInMeter: true, radius: fireRadiusMeters!)]),
+              
+              if (selectedLocation != null) 
+                MarkerLayer(markers: [
+                  Marker(
+                    point: selectedLocation!, 
+                    width: 80, height: 80, 
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: 0.8, end: 1.2).animate(CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut)),
+                      child: const Icon(Icons.location_on, color: Color(0xFFFF5722), size: 60, shadows: [Shadow(color: Colors.black, blurRadius: 15, offset: Offset(0, 8))]),
+                    ),
+                  )
+                ]),
             ],
-          ),
+          ).animate().fadeIn(duration: 1.seconds),
           
           Positioned(
-            top: 100, left: 20, right: 20,
+            top: 110, left: 20, right: 20,
             child: Autocomplete<Map<String, dynamic>>(
               optionsBuilder: (textEditingValue) => _getSuggestions(textEditingValue.text),
               displayStringForOption: (option) => option['display_name'],
@@ -700,7 +746,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                         child: BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                           child: Container(
-                            decoration: BoxDecoration(color: const Color(0xFF1E1E28).withOpacity(0.9), border: Border.all(color: Colors.white.withOpacity(0.1)), borderRadius: BorderRadius.circular(20)),
+                            decoration: BoxDecoration(color: const Color(0xFF1E1E28).withOpacity(0.95), border: Border.all(color: Colors.white.withOpacity(0.1)), borderRadius: BorderRadius.circular(20)),
                             child: ListView.separated(
                               padding: const EdgeInsets.symmetric(vertical: 8), shrinkWrap: true, itemCount: options.length,
                               separatorBuilder: (context, index) => Divider(color: Colors.white.withOpacity(0.1)),
@@ -708,7 +754,7 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                                 final option = options.elementAt(index);
                                 return ListTile(
                                   leading: const Icon(Icons.location_city, color: Color(0xFFFF5722)),
-                                  title: Text(option['display_name'], style: const TextStyle(color: Colors.white, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                  title: Text(option['display_name'], style: const TextStyle(color: Colors.white, fontSize: 16), maxLines: 2, overflow: TextOverflow.ellipsis),
                                   onTap: () => onSelected(option),
                                 );
                               },
@@ -717,83 +763,75 @@ class _MapScreenState extends State<MapScreen> with SingleTickerProviderStateMix
                         ),
                       ),
                     ),
-                  ),
+                  ).animate().fadeIn().slideY(begin: -0.1),
                 );
               },
               fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
                 return ClipRRect(
                   borderRadius: BorderRadius.circular(30),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(30), border: Border.all(color: Colors.white.withOpacity(0.2)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20)]),
                       child: Row(
                         children: [
-                          Icon(Icons.search, color: Colors.white.withOpacity(0.7)),
+                          Icon(Icons.search, color: Colors.white.withOpacity(0.8), size: 28),
                           const SizedBox(width: 15),
-                          Expanded(child: TextField(controller: controller, focusNode: focusNode, style: const TextStyle(color: Colors.white), decoration: InputDecoration(hintText: 'Search location...', hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)), border: InputBorder.none))),
+                          Expanded(child: TextField(controller: controller, focusNode: focusNode, style: const TextStyle(color: Colors.white, fontSize: 18), decoration: InputDecoration(hintText: 'Search for a location...', hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 18), border: InputBorder.none))),
                         ],
                       ),
                     ),
                   ),
                 );
               },
-            ),
+            ).animate().slideY(begin: -1.5, duration: 800.ms, curve: Curves.easeOutExpo).fadeIn(),
           ),
 
-          // NASA FIRMS Toggle Button
           Positioned(
-            bottom: 150, right: 20,
+            bottom: 160, right: 20,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(30),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Container(
+                  width: 56, height: 56,
                   decoration: BoxDecoration(
-                    color: _showNasaHeatmap ? Colors.redAccent.withOpacity(0.8) : Colors.black.withOpacity(0.5),
+                    color: _showNasaHeatmap ? Colors.redAccent.withOpacity(0.9) : Colors.black.withOpacity(0.6),
                     borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5),
+                    boxShadow: [if (_showNasaHeatmap) BoxShadow(color: Colors.redAccent.withOpacity(0.4), blurRadius: 20, spreadRadius: 2)]
                   ),
                   child: IconButton(
-                    iconSize: 28,
-                    color: Colors.white,
-                    tooltip: 'Toggle NASA Live Heatmap',
+                    iconSize: 28, color: Colors.white, tooltip: 'Toggle NASA Live Heatmap',
                     icon: const Icon(Icons.satellite_alt),
                     onPressed: () {
                       setState(() { _showNasaHeatmap = !_showNasaHeatmap; });
-                      if (_showNasaHeatmap && _nasaMapKey == 'YOUR_NASA_MAP_KEY') {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                          content: Text('Warning: NASA API Key not configured! Heatmaps may not load.'),
-                          backgroundColor: Colors.orange,
-                        ));
-                      }
                     },
                   ),
                 ),
               ),
-            ),
+            ).animate().slideX(begin: 1.5, delay: 300.ms, duration: 600.ms, curve: Curves.easeOutBack),
           ),
 
-          // Zoom Controls
           Positioned(
             bottom: 40, right: 20,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                 child: Container(
-                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.2), width: 1.5)),
                   child: Column(
                     children: [
-                      IconButton(onPressed: _zoomIn, icon: const Icon(Icons.add, color: Colors.white)),
-                      Container(height: 1, width: 30, color: Colors.white.withOpacity(0.1)),
-                      IconButton(onPressed: _zoomOut, icon: const Icon(Icons.remove, color: Colors.white)),
+                      IconButton(onPressed: _zoomIn, icon: const Icon(Icons.add, color: Colors.white, size: 30)),
+                      Container(height: 1.5, width: 35, color: Colors.white.withOpacity(0.2)),
+                      IconButton(onPressed: _zoomOut, icon: const Icon(Icons.remove, color: Colors.white, size: 30)),
                     ],
                   ),
                 ),
               ),
-            ),
+            ).animate().slideX(begin: 1.5, delay: 400.ms, duration: 600.ms, curve: Curves.easeOutBack),
           ),
         ],
       ),
