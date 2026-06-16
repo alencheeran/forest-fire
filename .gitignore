@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Model files & Data (Optional, but usually good to ignore large data)
+# data/
+# models/
+
+# Flutter/Dart
+forest_fire_app/build/
+forest_fire_app/.dart_tool/
+forest_fire_app/.flutter-plugins
+forest_fire_app/.flutter-plugins-dependencies
+forest_fire_app/.packages
+forest_fire_app/ios/Flutter/.last_build_id
+forest_fire_app/.pub-cache/
+forest_fire_app/.pub/
